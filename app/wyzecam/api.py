@@ -10,10 +10,10 @@ from typing import Any, Optional
 
 from requests import PreparedRequest, Response, get, post
 
-from wyzebridge.build_config import APP_VERSION, IOS_VERSION, VERSION
+from wyzebridge.build_config import APP_VERSION, VERSION
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
 
-SCALE_USER_AGENT = f"Wyze/{APP_VERSION} (iPhone; iOS {IOS_VERSION}; Scale/3.00)"
+WYZE_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"
 CLOUD_API = "https://app-core.cloud.wyze.com/app"
@@ -181,7 +181,7 @@ def refresh_token(auth_info: WyzeCredential) -> WyzeCredential:
     payload = _payload(auth_info)
     payload["refresh_token"] = auth_info.refresh_token
 
-    ui_headers = _headers() # (auth_info.phone_id, SCALE_USER_AGENT)
+    ui_headers = _headers()
     resp = post(f"{WYZE_API}/user/refresh_token", json=payload, headers=ui_headers)
 
     resp_json = validate_resp(resp)
@@ -317,7 +317,7 @@ def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str) -> dict:
     if not auth_info.access_token:
         raise AccessTokenError()
 
-    ui_headers = _headers() # (auth_info.phone_id, SCALE_USER_AGENT)
+    ui_headers = _headers()
     ui_headers["content-type"] = "application/json"
     ui_headers["authorization"] = f"Bearer {auth_info.access_token}" # doesn't match upstream which just passes the token
     resp = get(
@@ -380,7 +380,7 @@ def _headers(
     """
     if not phone_id:
         return {
-            "user-agent": SCALE_USER_AGENT,
+            "user-agent": WYZE_USER_AGENT,
             "appversion": f"{APP_VERSION}",
             "env": "prod",
         }
@@ -389,13 +389,13 @@ def _headers(
         return {
             "apikey": api_key,
             "keyid": key_id,
-            "user-agent": f"docker-wyze-bridge/{VERSION}",
+            "user-agent": WYZE_USER_AGENT,
         }
 
     return {
         "x-api-key": WYZE_APP_API_KEY, # maybe should be "X-API-Key" https://github.com/kroo/wyzecam/compare/main...mrlt8:wyzecam:main#diff-85e3fea18dd9245a839a4d5ed2850300e191ce6fd45f08af71e41a4cb7bdf893R228
         "phone-id": phone_id,
-        "user-agent": f"wyze_ios_{APP_VERSION}",
+        "user-agent": WYZE_USER_AGENT,
     }
 
 def sign_payload(auth_info: WyzeCredential, app_id: str, payload: str) -> dict:
@@ -405,7 +405,7 @@ def sign_payload(auth_info: WyzeCredential, app_id: str, payload: str) -> dict:
     return {
         "content-type": "application/json",
         "phoneid": auth_info.phone_id,
-        "user-agent": f"wyze_ios_{APP_VERSION}",
+        "user-agent": WYZE_USER_AGENT,
         "appinfo": f"wyze_ios_{APP_VERSION}",
         "appversion": APP_VERSION,
         "access_token": auth_info.access_token,

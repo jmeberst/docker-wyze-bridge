@@ -22,6 +22,9 @@
 #  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 #  OR OTHER DEALINGS IN THE SOFTWARE.
 
+import multiprocessing as mp
+mp.set_start_method("fork", force=True)
+
 try:
     from importlib.metadata import PackageNotFoundError, version
 except ImportError:  # pragma: no cover
