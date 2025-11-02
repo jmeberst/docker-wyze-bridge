@@ -33,6 +33,7 @@ def get_ffmpeg_cmd(
     - list of str: complete ffmpeg command that is ready to run as subprocess.
     """
 
+
     flags = "-fflags +flush_packets+nobuffer -flags +low_delay"
     livestream = get_livestream_cmd(uri)
     audio_in = "-f lavfi -i anullsrc=cl=mono" if livestream else ""
@@ -56,7 +57,15 @@ def get_ffmpeg_cmd(
 
     rtsp_transport = "udp" if "udp" in env_bool("MTX_RTSPTRANSPORTS") else "tcp"
     fio_cmd = r"use_fifo=1:fifo_options=attempt_recovery=1\\\:drop_pkts_on_overflow=1:"
-    rss_cmd = f"[{fio_cmd}{{}}f=rtsp:{rtsp_transport=:}]rtsp://0.0.0.0:8554/{uri}"
+    
+    # figure out where to push the RTSP for this camera
+    mtx_host = os.getenv("MTX_HOST") or "127.0.0.1"
+    mtx_port = os.getenv("MTX_PORT") or "8554"
+
+    rss_cmd = (
+    f"[f=rtsp:onfail=ignore:rtsp_transport=tcp]"
+    f"rtsp://{mtx_host}:{mtx_port}/{uri}?rtsp_transport=tcp")
+
     rtsp_ss = rss_cmd.format("")
 
     if env_cam("AUDIO_STREAM", uri, style="original") and audio:
@@ -83,12 +92,17 @@ def get_ffmpeg_cmd(
         + ["-f", "tee"]
         + [rtsp_ss + livestream]
     )
+    
+    if level in {"info", "verbose", "debug"}:
+        logger.info(f"[FFMPEG] Stream command: {' '.join(cmd)}")
 
     if "ffmpeg" not in cmd[0].lower():
         cmd.insert(0, "ffmpeg")
 
     if level in {"info", "verbose", "debug"}:
-        logger.info(f"[FFMPEG] Stream command: {' '.join(cmd)}")
+        logger.info(f"[DEBUG FFMPEG ] Stream command: {' '.join(cmd)}")
+
+    print("FFMPEG DEBUG CMD:", " ".join(cmd), flush=True)
 
     return cmd
 
@@ -311,7 +325,7 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
     cmd = (
         ["ffmpeg", "-loglevel", "error", "-analyzeduration", "0", "-probesize", "32"]
         + ["-f", "rtsp", "-rtsp_transport", rtsp_transport, "-thread_queue_size", "500"]
-        + ["-i", f"rtsp://0.0.0.0:8554/{cam_name}", "-map", "0:v:0"]
+        + ["-i", f"rtsp://{os.getenv('MTX_HOST', '127.0.0.1')}:{os.getenv('MTX_PORT', '8554')}/{cam_name}", "-map", "0:v:0"]
         + rotation
         + ["-f", "image2", "-frames:v", "1", "-y", img]
     )

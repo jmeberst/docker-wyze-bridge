@@ -14,6 +14,7 @@ from wyzebridge.build_config import APP_VERSION, VERSION
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
 
 WYZE_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+
 AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"
 CLOUD_API = "https://app-core.cloud.wyze.com/app"
@@ -372,30 +373,32 @@ def _headers(
     key_id: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict[str, str]:
-    """Format headers for api requests.
+    """Format headers for Wyze API requests."""
 
-    key_id and api_key are only needed when making a request to the /api/user/login endpoint.
-
-    phone_id is required for other login-related endpoints.
-    """
     if not phone_id:
         return {
-            "user-agent": WYZE_USER_AGENT,
-            "appversion": f"{APP_VERSION}",
-            "env": "prod",
+            "User-Agent": WYZE_USER_AGENT,
+            "AppVersion": f"{APP_VERSION}",
+            "Env": "prod",
+            "Accept-Encoding": "gzip",
+            "Connection": "Keep-Alive",
         }
 
     if key_id and api_key:
         return {
-            "apikey": api_key,
-            "keyid": key_id,
-            "user-agent": WYZE_USER_AGENT,
+            "X-API-Key": api_key,
+            "KeyId": key_id,
+            "User-Agent": WYZE_USER_AGENT,
+            "Accept-Encoding": "gzip",
+            "Connection": "Keep-Alive",
         }
 
     return {
-        "x-api-key": WYZE_APP_API_KEY, # maybe should be "X-API-Key" https://github.com/kroo/wyzecam/compare/main...mrlt8:wyzecam:main#diff-85e3fea18dd9245a839a4d5ed2850300e191ce6fd45f08af71e41a4cb7bdf893R228
-        "phone-id": phone_id,
-        "user-agent": WYZE_USER_AGENT,
+        "X-API-Key": WYZE_APP_API_KEY,
+        "Phone-Id": phone_id,
+        "User-Agent": WYZE_USER_AGENT,
+        "Accept-Encoding": "gzip",
+        "Connection": "Keep-Alive",
     }
 
 def sign_payload(auth_info: WyzeCredential, app_id: str, payload: str) -> dict:

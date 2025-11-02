@@ -2,7 +2,7 @@ ARG BUILD
 ARG BUILD_DATE
 ARG GITHUB_SHA
 
-FROM python:3.13-slim-bookworm AS base
+FROM python:3.11-bullseye AS base
 
 FROM base AS builder
 ARG BUILD_DATE
@@ -11,6 +11,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
     apt-get update; \
+    apt-get install -y libsystemd0 libssl1.1 libcurl4; \
     apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -27,6 +28,7 @@ RUN chmod +x /build/app/run
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eux; pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
 
+WORKDIR /build
 RUN set -eux; \
     echo "BUILDING IMAGE FOR $(uname -m)";\
     if [ "$(uname -m)" = "armv7l" ]; then \
@@ -64,11 +66,30 @@ RUN set -eux; \
     rm /var/log/*.log ; \
     rm -rf /var/log/apt ;
 
-COPY --from=builder /build /
+RUN echo "=== Checking build output ===" && ls -R /build || true
 
-ENV PYTHONUNBUFFERED=1 FLASK_APP=frontend BUILD=$BUILD BUILD_VERSION=$BUILD_VERSION BUILD_DATE=$BUILD_DATE GITHUB_SHA=$GITHUB_SHA FLASK_ENV=production FLASK_DEBUG=0
+# Copy built directories explicitly instead of flattening /build
+COPY --from=builder /build/usr /usr
+COPY --from=builder /build/app /app
+COPY --from=builder /build/tokens /tokens
+COPY --from=builder /build/.build_date /.build_date
+
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_APP=frontend \
+    BUILD=$BUILD \
+    BUILD_VERSION=$BUILD_VERSION \
+    BUILD_DATE=$BUILD_DATE \
+    GITHUB_SHA=$GITHUB_SHA \
+    FLASK_ENV=production \
+    FLASK_DEBUG=0 \
+    TZ=America/New_York
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+
 WORKDIR /app
-ENTRYPOINT [ "/app/run" ]
+ENTRYPOINT ["/app/run"]
+
 
 LABEL \
     io.hass.name="Docker Wyze Bridge for Home Assistant" \

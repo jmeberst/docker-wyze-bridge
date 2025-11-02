@@ -172,11 +172,17 @@ class WyzeStream(Stream):
         self._clear_mp_queue()
         self.start_time = 0
         self.state = StreamStatus.STOPPING
-        if self.tutk_stream_process and self.tutk_stream_process.is_alive():
-            with contextlib.suppress(ValueError, AttributeError, RuntimeError):
-                if self.tutk_stream_process.is_alive():
-                    self.tutk_stream_process.terminate()
-                    self.tutk_stream_process.join(5)
+        proc = self.tutk_stream_process
+        if proc:
+            popen = getattr(proc, "_popen", None)
+            if popen and proc.pid is not None:
+                try:
+                    if proc.is_alive():
+                        proc.terminate()
+                        proc.join(5)
+                except (ValueError, AttributeError, RuntimeError):
+                    pass
+
 
         self.tutk_stream_process = None
         self.state = StreamStatus.STOPPED
@@ -428,38 +434,63 @@ def start_tutk_stream(uri: str, stream: StreamTuple, queue: QueueTuple, state: c
     state.value = StreamStatus.CONNECTING
     exit_code = StreamStatus.STOPPING
     control_thread = audio_thread = None
+    
+    logger.warning(f"[DEBUG] In start_tutk_stream about to open session for {uri}")
+    
+    # try:
+    #     with WyzeIOTC() as iotc, iotc.session(stream, state) as sess:
+    #         assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
+    #         v_codec, audio = get_cam_params(sess, uri)
+    #         control_thread = setup_control(sess, queue) if not stream.options.substream else None
+    #         audio_thread = setup_audio(sess, uri) if sess.enable_audio else None
+
+    #         logger.warning(f"[DEBUG] about to call get_ffmpeg_cmd for {uri}")
+
+    #         ffmpeg_cmd = get_ffmpeg_cmd(uri, v_codec, audio, stream.camera.is_vertical)
     try:
-        with WyzeIOTC() as iotc, iotc.session(stream, state) as sess:
-            assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
-            v_codec, audio = get_cam_params(sess, uri)
-            control_thread = setup_control(sess, queue) if not stream.options.substream else None
-            audio_thread = setup_audio(sess, uri) if sess.enable_audio else None
-
-            ffmpeg_cmd = get_ffmpeg_cmd(uri, v_codec, audio, stream.camera.is_vertical)
-            assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
-            state.value = StreamStatus.CONNECTED
-            with Popen(ffmpeg_cmd, stdin=PIPE, stderr=None) as ffmpeg:
-                if ffmpeg.stdin is not None:
-                    for frame, _ in sess.recv_bridge_data():
-                        ffmpeg.stdin.write(frame)
-
-    except TutkError as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
-        logger.warning(f"𓁈‼️ [TUTK] {[ex.code]} {ex} {trace}")
-        set_cam_offline(uri, ex, was_offline)
-        if ex.code in {-10, -13, -19, -68, -90}: # IOTC_ER_UNLICENSE, IOTC_ER_TIMEOUT, IOTC_ER_CAN_NOT_FIND_DEVICE, IOTC_ER_DEVICE_REJECT_BY_WRONG_AUTH_KEY, IOTC_ER_DEVICE_OFFLINE
-            exit_code = ex.code
-    except ValueError as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
-        logger.warning(f"𓁈⚠️ [TUTK] Error: [{type(ex).__name__}] {ex} {trace}")
-        if ex.args[0] == "ENR_AUTH_FAILED":
-            logger.warning("⏰ Expired ENR?")
-            exit_code = -19 # IOTC_ER_CAN_NOT_FIND_DEVICE
-    except BrokenPipeError:
-        logger.warning("𓁈✋ [TUTK] FFMPEG stopped")
-    except Exception as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
-        logger.error(f"𓁈‼️ [TUTK] Exception: [{type(ex).__name__}] {ex} {trace}")
+        logger.warning(f"[DEBUG] In start_tutk_stream about to open session for {uri}")
+        with WyzeIOTC() as iotc:
+            logger.warning(f"[DEBUG] {uri} opened WyzeIOTC manager successfully")
+            with iotc.session(stream, state) as sess:
+                logger.warning(f"[DEBUG] {uri} got session object {sess}")
+                v_codec, audio = get_cam_params(sess, uri)
+                logger.warning(f"[DEBUG] {uri} got cam params: {v_codec}, {audio}")
+                control_thread = setup_control(sess, queue) if not stream.options.substream else None
+                audio_thread = setup_audio(sess, uri) if sess.enable_audio else None
+                logger.warning(f"[DEBUG] about to call get_ffmpeg_cmd for {uri}")
+                ffmpeg_cmd = get_ffmpeg_cmd(uri, v_codec, audio, stream.camera.is_vertical)
+        
+                assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
+                state.value = StreamStatus.CONNECTED
+                with Popen(ffmpeg_cmd, stdin=PIPE, stderr=None) as ffmpeg:
+                    if ffmpeg.stdin is not None:
+                        for frame, _ in sess.recv_bridge_data():
+                            ffmpeg.stdin.write(frame)
+    except Exception as e:
+        logger.warning(f"[DEBUG] {uri} Exception before ffmpeg: {type(e).__name__}: {e}")
+    # except TutkError as ex:
+    #     trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+    #     logger.warning(f"𓁈‼️ [TUTK] {[ex.code]} {ex} {trace}")
+    #     set_cam_offline(uri, ex, was_offline)
+    #     if ex.code in {-10, -13, -19, -68, -90}: # IOTC_ER_UNLICENSE, IOTC_ER_TIMEOUT, IOTC_ER_CAN_NOT_FIND_DEVICE, IOTC_ER_DEVICE_REJECT_BY_WRONG_AUTH_KEY, IOTC_ER_DEVICE_OFFLINE
+    #         exit_code = ex.code
+    # except ValueError as ex:
+    #     trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+    #     logger.warning(f"𓁈⚠️ [TUTK] Error: [{type(ex).__name__}] {ex} {trace}")
+    #     if ex.args[0] == "ENR_AUTH_FAILED":
+    #         logger.warning("⏰ Expired ENR?")
+    #         exit_code = -19 # IOTC_ER_CAN_NOT_FIND_DEVICE
+    # except BrokenPipeError:
+    #     logger.warning("𓁈✋ [TUTK] FFMPEG stopped")
+    # except AssertionError as ex:
+    #     trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+    #     if "can only test a child process" in str(ex):
+    #         logger.warning(f"𓁈‼️ [TUTK] AssertionError: {ex} {trace}")
+    #     else:
+    #         logger.error(f"𓁈‼️ [TUTK] Exception: [{type(ex).__name__}] {ex} {trace}")
+    # except Exception as ex:
+    #     trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+    #     logger.error(f"𓁈‼️ [TUTK] Exception: [{type(ex).__name__}] {ex} {trace}")
     else:
         logger.warning("𓁈🛑 [TUTK] Stream stopped")
     finally:

@@ -14,7 +14,19 @@ from requests import get
 from requests.exceptions import ConnectionError, HTTPError, RequestException
 
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
-from wyzecam.api import AccessTokenError, RateLimitError, WyzeAPIError, get_cam_webrtc, get_camera_list, get_user_info, login, post_device, refresh_token, run_action
+from wyzecam.api import (
+    AccessTokenError,
+    RateLimitError,
+    WyzeAPIError,
+    WYZE_USER_AGENT,
+    get_cam_webrtc,
+    get_camera_list,
+    get_user_info,
+    login,
+    post_device,
+    refresh_token,
+    run_action,
+)
 from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_list
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
@@ -250,7 +262,7 @@ class WyzeApi:
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
 
         try:
-            img = get(thumb)
+            img = get(thumb, headers={"user-agent": WYZE_USER_AGENT})
             img.raise_for_status()
 
             with open(save_to, "wb") as f:
